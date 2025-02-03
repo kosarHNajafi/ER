@@ -1,0 +1,124 @@
+---
+title: "Counting pathways with HR"
+author: "Kosar"
+date: "`r Sys.Date()`"
+output: github_document
+chunk_output_type: inline
+---
+## Load necessary libraries
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyr)
+```
+
+##Load and apply function on your Recieved HR files from email
+```{r setup_data, include=TRUE}
+load_and_filter_data <- function(file_path) {
+  # Load data from the file (adjust separator if needed, e.g., csv or tsv)
+  data <- read.delim(file_path, header = TRUE, stringsAsFactors = FALSE)
+  
+  # Filter the data to keep only rows where p-value < 0.05
+  filtered_data <- data %>%
+    filter(Pvalue < 0.05) %>%
+    mutate(HR_status = ifelse(HR >= 1, "HR>=1", "HR<1"))
+  
+  return(filtered_data)
+}
+
+# Paths to your data files (adjust with the actual file paths)
+discovery_os_file <- "Discovery_OS_HR_ERP_08102024.txt"
+validation_os_file <- "Validation_OS_HR_ERP_08102024.txt"
+discovery_dss_file <- "Discovery_DSS_HR_ERP_08102024.txt"
+validation_dss_file <- "Validation_DSS_HR_ERP_08102024.txt"
+discovery_rfs_file <- "Discovery_RFS_HR_ERP_08102024.txt"
+validation_rfs_file <- "Validation_RFS_HR_ERP_08102024.txt"
+discovery_mfs_file <- "Discovery_MFS_HR_ERP_08102024.txt"
+validation_mfs_file <- "Validation_MFS_HR_ERP_08102024.txt"
+
+# Load and filter the data for all survival types
+discovery_os <- load_and_filter_data(discovery_os_file)
+validation_os <- load_and_filter_data(validation_os_file)
+discovery_dss <- load_and_filter_data(discovery_dss_file)
+validation_dss <- load_and_filter_data(validation_dss_file)
+discovery_rfs <- load_and_filter_data(discovery_rfs_file)
+validation_rfs <- load_and_filter_data(validation_rfs_file)
+discovery_mfs <- load_and_filter_data(discovery_mfs_file)
+validation_mfs <- load_and_filter_data(validation_mfs_file)
+```
+
+##find the overlapping pathways predicting the same type of survival in both discovery and validation 
+```{r setup_funcrion, include=TRUE}
+find_overlap <- function(discovery_data, validation_data) {
+  # Get unique pathways in discovery and validation
+  discovery_pathways <- discovery_data$Gene
+  validation_pathways <- validation_data$Gene
+  
+  # Find the overlap of pathways between discovery and validation
+  overlap_pathways <- intersect(discovery_pathways, validation_pathways)
+  
+  # Count the number of pathways with HR >= 1 and HR < 1 in discovery and validation
+  discovery_hr_1 <- sum(discovery_data$HR_status[discovery_pathways %in% overlap_pathways] == "HR>=1")
+  discovery_hr_less_1 <- sum(discovery_data$HR_status[discovery_pathways %in% overlap_pathways] == "HR<1")
+  
+  validation_hr_1 <- sum(validation_data$HR_status[validation_pathways %in% overlap_pathways] == "HR>=1")
+  validation_hr_less_1 <- sum(validation_data$HR_status[validation_pathways %in% overlap_pathways] == "HR<1")
+  
+  # Count total pathways with P-value < 0.05 in discovery and validation
+  total_discovery <- nrow(discovery_data)
+  total_validation <- nrow(validation_data)
+  
+  # Calculate the percentage of HR>=1 and HR<1 in both datasets
+  discovery_total_percentage <- (discovery_hr_1 + discovery_hr_less_1) / total_discovery * 100
+  validation_total_percentage <- (validation_hr_1 + validation_hr_less_1) / total_validation * 100
+  
+  # Calculate ratios for HR>=1 and HR<1
+  discovery_hr_1_ratio <- discovery_hr_1 / total_discovery
+  discovery_hr_less_1_ratio <- discovery_hr_less_1 / total_discovery
+  validation_hr_1_ratio <- validation_hr_1 / total_validation
+  validation_hr_less_1_ratio <- validation_hr_less_1 / total_validation
+  
+  # Return the counts for HR>=1, HR<1, total pathways, percentages, and ratios in both discovery and validation datasets
+  return(data.frame(
+    D_HR_1 = discovery_hr_1,
+    D_HR_less_1 = discovery_hr_less_1,
+    V_HR_1 = validation_hr_1,
+    V_HR_less_1 = validation_hr_less_1,
+    D_Total_Pathways = total_discovery,
+    V_Total_Pathways = total_validation,
+    D_HR_1_Ratio = discovery_hr_1_ratio,
+    D_HR_less_1_Ratio = discovery_hr_less_1_ratio,
+    V_HR_1_Ratio = validation_hr_1_ratio,
+    V_HR_less_1_Ratio = validation_hr_less_1_ratio,
+    Overlap = length(overlap_pathways),
+    Pathways = paste(overlap_pathways, collapse = ", ")
+  ))
+}
+
+# Apply the find_overlap function and create results for OS, DSS, RFS, MFS
+os_overlap <- find_overlap(discovery_os, validation_os)
+dss_overlap <- find_overlap(discovery_dss, validation_dss)
+rfs_overlap <- find_overlap(discovery_rfs, validation_rfs)
+mfs_overlap <- find_overlap(discovery_mfs, validation_mfs)
+
+# Combine the results into one table
+results_table <- bind_rows(
+  cbind(Survival_Type = "OS", os_overlap),
+  cbind(Survival_Type = "DSS", dss_overlap),
+  cbind(Survival_Type = "RFS", rfs_overlap),
+  cbind(Survival_Type = "MFS", mfs_overlap)
+)
+```
+
+##Visualize the results ans render it
+```{r setup_results, include=TRUE}
+# Print the results table
+results_table
+write.table(results_table,file = paste0("ERpos_HR_count_",Sys.Date(),".txt"),sep = "\t",row.names = FALSE)
+
+```
+
+##Sesion information
+```{r setup_sessionInfo, include=TRUE}
+sessionInfo()
+```
