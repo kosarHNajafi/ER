@@ -227,6 +227,7 @@ common_results_combined <- common_results %>%
 
 ########################################################################
 # Section 7: Create X-axis Label Mapping Based on Top10 Membership
+#INACTIVATE SECTION 7 IF YOU DON'T WANT FONTCOLOR IN YOUR PLOT
 ########################################################################
 label_df <- common_results_combined %>%
   group_by(Pathway) %>%
