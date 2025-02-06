@@ -214,8 +214,8 @@ common_results <- bind_rows(res_OS_ERpos, res_DSS_ERpos, res_RFS_ERpos, res_MFS_
 # If a pathway appears in both ERpos and ERneg, label it as "Common"
 common_results_combined <- common_results %>%
   group_by(Pathway, Survival) %>%
-  summarise(
-    ER_Status = if("ERneg" %in% unique(ER_Status)) "ERneg" else first(ER_Status),
+    summarise(
+    ER_Status = if(length(unique(ER_Status)) > 1) "Common" else first(ER_Status),
     Avg_HR = mean(Avg_HR),
     Max_Pvalue = max(Max_Pvalue),
     Grey_Square = if(all(!is.na(Grey_Square)) & all(Grey_Square == TRUE)) TRUE else NA,
@@ -223,6 +223,7 @@ common_results_combined <- common_results %>%
     Top10_ERneg = first(Pathway) %in% c(top10_ERneg_names_discovery, top10_ERneg_names_validation),
     .groups = "drop"
   )
+
 
 ########################################################################
 # Section 7: Create X-axis Label Mapping Based on Top10 Membership
@@ -254,7 +255,7 @@ all_pathways <- sort(unique(common_results_combined$Pathway))
 common_results_combined$Pathway <- factor(common_results_combined$Pathway, levels = all_pathways)
 
 # Define manual colors for ER groups, including common
-er_colors <- c("ERpos" = "steelblue", "ERneg" = "violet")
+er_colors <- c("ERpos" = "steelblue", "ERneg" = "violet", "Common" = "yellow")
 
 # To make higher p-values produce smaller circles, you can invert the size scale.
 # One approach is to use -log(Max_Pvalue) if p-values are small.
@@ -273,9 +274,12 @@ p <- ggplot(common_results_combined, aes(x = Pathway, y = Survival)) +
   labs(x = "Metabolic Pathway", y = "Survival Type", color = "ER Status") +
   theme_minimal() +
   theme(
-    axis.text.x = element_markdown(angle = 90, hjust = 1),  # Rotate x-axis labels
-    axis.title.x = element_text(hjust = 0.5, vjust = -1),  # Adjust "Metabolic Pathway" title
-    axis.title.y = element_text(hjust = 0.5, vjust = 0.5, angle = 90)  # Rotate "Survival Type" title to vertical
+    axis.text.x = element_markdown(size = 12, angle = 90, hjust = 1),  # Rotate x-axis labels
+    axis.title.x = element_text(hjust = 0.5, vjust = -3.5),  # Adjust "Metabolic Pathway" title
+    #vjust = -1 : it will be very close to y-axis
+    axis.title.y = element_text(hjust = 0.5, vjust = 5, angle = 90),  # Rotate "Survival Type" title to vertical
+    #vjust = 0.5 will be very close to x-axis legends
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 30)  # Adjust left margin to provide space for y-axis title
   ) +
   guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
 
@@ -301,15 +305,15 @@ p <- p + scale_x_discrete(labels = labels_map)
 # Create a custom legend for the square border.
 # Here, we use a thicker border (lwd = 3) in the custom legend.
 legend_plot <- ggdraw() + 
-  draw_label("HR<1", x = 0.95, y = 6.2, size = 10, fontface = "italic") +
-  draw_grob(rectGrob(gp = gpar(col = "grey", fill = NA, lwd = 3)), 
-            x = 0.905, y = 6.1, width = 0.02, height = 0.3) 
-
+  draw_label("HR<1",  x = 0.94, y = 6.7, size = 10, fontface = "italic") +   #size to fit US letter pdf: x = 0.95, y = 6.2 
+  draw_grob(rectGrob(gp = gpar(col = "grey", fill = NA, lwd = 3)),        
+            x = 0.89, y = 6.5, width = 0.02, height = 0.3)                #size to fit US letter pdf:  x = 0.905, y = 6.1 
+           
 # Combine the main plot and custom legend.
 final_plot <- plot_grid(p, legend_plot, ncol = 1, rel_heights = c(1, 0.1))
 final_plot
 
 # Optionally, save the plot to a file:
-ggsave(filename = paste0("Final_HR_ER_", Sys.Date(), ".png"), plot = final_plot, width = 12, height = 8)
+ggsave(filename = paste0("Final_HR_ER_", Sys.Date(), ".TIFF"), plot = final_plot, width = 10, height = 8)
 se <- sessionInfo()
 save(list = ls(),file = paste0("Final_HR_ER_",Sys.Date(),".RData"))
