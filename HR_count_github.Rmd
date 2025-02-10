@@ -1,9 +1,10 @@
 ---
-title: "Counting pathways with HR"
-author: "Kosar"
-date: "`r Sys.Date()`"
-output: github_document
-chunk_output_type: inline
+title: "Counting HR and piechart"
+Author: Kosar H.Najafi
+output:
+  html_document:
+    df_print: paged
+Date: sys.Date()
 ---
 # -------------------------------------------------
 # 1. Load Required Libraries
