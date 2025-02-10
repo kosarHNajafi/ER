@@ -5,11 +5,14 @@ date: "`r Sys.Date()`"
 output: github_document
 chunk_output_type: inline
 ---
-## Load necessary libraries
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-library(dplyr)
-library(tidyr)
+# -------------------------------------------------
+# 1. Load Required Libraries
+# -------------------------------------------------
+
+```{r setup, message=FALSE, warning=FALSE, paged.print=FALSE}
+library(dplyr)    # For data manipulation
+library(tidyr)    # For data reshaping
+library(plotly)   # For interactive plotting
 ```
 
 ##Load and apply function on your Recieved HR files from email
@@ -117,8 +120,235 @@ results_table
 write.table(results_table,file = paste0("ERpos_HR_count_",Sys.Date(),".txt"),sep = "\t",row.names = FALSE)
 
 ```
+## PieChart Section
+## -------------------------------------------------
+## 6. Calculate Predictive and FDR Percentages from Data 
+## -------------------------------------------------
+```{r}
+raw_predict <- data.frame(
+  Survival = c("OS", "DSS", "RFS", "MFS"),
+  raw_value = c(os_overlap$Overlap, dss_overlap$Overlap, rfs_overlap$Overlap, mfs_overlap$Overlap),
+  raw_top10 = c((os_overlap$D.Overlap_Top10 + os_overlap$V.Overlap_Top10) / 2,
+                (dss_overlap$D.Overlap_Top10 + dss_overlap$V.Overlap_Top10) / 2,
+                (rfs_overlap$D.Overlap_Top10 + rfs_overlap$V.Overlap_Top10) / 2,
+                (mfs_overlap$D.Overlap_Top10 + mfs_overlap$V.Overlap_Top10) / 2)
+)
 
-##Sesion information
-```{r setup_sessionInfo, include=TRUE}
+raw_predict <- raw_predict %>%
+  mutate(avg_total = c(
+    (os_overlap$D_Total_Pathways + os_overlap$V_Total_Pathways) / 2,
+    (dss_overlap$D_Total_Pathways + dss_overlap$V_Total_Pathways) / 2,
+    (rfs_overlap$D_Total_Pathways + rfs_overlap$V_Total_Pathways) / 2,
+    (mfs_overlap$D_Total_Pathways + mfs_overlap$V_Total_Pathways) / 2
+  ))
+
+overall_predict <- sum(raw_predict$raw_value) / sum(raw_predict$avg_total) * 100
+cat("Overall Predictive Percentage: ", round(overall_predict, 1), "%\n")
+
+raw_predict <- raw_predict %>%
+  mutate(
+    norm_value = raw_value * overall_predict / sum(raw_value),
+    ratio_top10 = ifelse(raw_value > 0, raw_top10 / raw_value, 0)
+  )
+# --- Compute FDR counts and FDR-top10 counts ---
+raw_predict <- raw_predict %>%
+  mutate(
+    raw_fdr = c(
+      (os_overlap$D.Overlap_FDR + os_overlap$V.Overlap_FDR) / 2,
+      (dss_overlap$D.Overlap_FDR + dss_overlap$V.Overlap_FDR) / 2,
+      (rfs_overlap$D.Overlap_FDR + rfs_overlap$V.Overlap_FDR) / 2,
+      (mfs_overlap$D.Overlap_FDR + mfs_overlap$V.Overlap_FDR) / 2
+    ),
+    raw_fdr_top10 = c(
+      (os_overlap$D.Overlap_FDR_Top10 + os_overlap$V.Overlap_FDR_Top10) / 2,
+      (dss_overlap$D.Overlap_FDR_Top10 + dss_overlap$V.Overlap_FDR_Top10) / 2,
+      (rfs_overlap$D.Overlap_FDR_Top10 + rfs_overlap$V.Overlap_FDR_Top10) / 2,
+      (mfs_overlap$D.Overlap_FDR_Top10 + mfs_overlap$V.Overlap_FDR_Top10) / 2
+    ),
+    ratio_fdr = ifelse(raw_value > 0, raw_fdr / raw_value, 0),
+    ratio_fdr_top10 = ifelse(raw_fdr > 0, raw_fdr_top10 / raw_fdr, 0)
+  ) %>%
+  mutate(
+    norm_fdr = norm_value * ratio_fdr,
+    norm_not_fdr = norm_value - norm_fdr,
+    norm_fdr_top10 = norm_fdr * ratio_fdr_top10,
+    norm_fdr_not_top10 = norm_fdr - norm_fdr_top10
+  )
+print(raw_predict)
+
+```
+
+## -------------------------------------------------
+## 7. Build the Hierarchical Data Frame for the Sunburst Chart 
+## -------------------------------------------------
+```{r}
+# Level 0: Root node remains the same.
+root <- data.frame(
+  id = "All Common Pathways",
+  label = "All Common Pathways (100%)",
+  parent = "",
+  value = 100,
+  stringsAsFactors = FALSE
+)
+
+# Level 1: Split into Predict Survival and Not Predict Survival.
+predict_node <- data.frame(
+  id = "Predict Survival",
+  label = paste0("Predict Survival (", round(overall_predict, 1), "%)"),
+  parent = "All Common Pathways",
+  value = overall_predict,
+  stringsAsFactors = FALSE
+)
+not_predict_node <- data.frame(
+  id = "Not Predict Survival",
+  label = paste0("Not Predict Survival (", round(100 - overall_predict, 1), "%)"),
+  parent = "All Common Pathways",
+  value = 100 - overall_predict,
+  stringsAsFactors = FALSE
+)
+
+# Level 2: Create a node for each survival type.
+survival_nodes <- raw_predict %>%
+  mutate(
+    id = Survival,
+    label = paste0(Survival, " (", round(norm_value, 1), "%)"),
+    parent = "Predict Survival"
+  ) %>%
+  select(id, label, parent, value = norm_value)
+
+# Level 3: Under each survival type, add two child nodes:
+# a) FDR < 0.01 and b) Not FDR < 0.01.
+fdr_nodes <- raw_predict %>%
+  mutate(
+    id = paste0(Survival, "_FDR"),
+    label = paste0(Survival, " FDR < 0.01 (", round(norm_fdr, 1), "%)"),
+    parent = Survival,
+    value = norm_fdr
+  ) %>%
+  select(id, label, parent, value)
+
+not_fdr_nodes <- raw_predict %>%
+  mutate(
+    id = paste0(Survival, "_Not_FDR"),
+    label = paste0(Survival, " Not FDR < 0.01 (", round(norm_not_fdr, 1), "%)"),
+    parent = Survival,
+    value = norm_not_fdr
+  ) %>%
+  select(id, label, parent, value)
+
+# Level 4: Under the FDR < 0.01 node, break into "Among Top10" and "Not Among Top10".
+fdr_top10_nodes <- raw_predict %>%
+  mutate(
+    id = paste0(Survival, "_FDR_Top10"),
+    label = paste0(Survival, " FDR Among Top10 (", round(norm_fdr_top10, 1), "%)"),
+    parent = paste0(Survival, "_FDR"),
+    value = norm_fdr_top10
+  ) %>%
+  select(id, label, parent, value)
+
+fdr_not_top10_nodes <- raw_predict %>%
+  mutate(
+    id = paste0(Survival, "_FDR_Not_Top10"),
+    label = paste0(Survival, " FDR Not Among Top10 (", round(norm_fdr_not_top10, 1), "%)"),
+    parent = paste0(Survival, "_FDR"),
+    value = norm_fdr_not_top10
+  ) %>%
+  select(id, label, parent, value)
+
+# Combine all nodes into one hierarchical data frame.
+df_hier <- bind_rows(
+  root,
+  predict_node,
+  not_predict_node,
+  survival_nodes,
+  fdr_nodes,
+  not_fdr_nodes,
+  fdr_top10_nodes,
+  fdr_not_top10_nodes
+)
+
+```
+
+## -------------------------------------------------
+## 8. Assign Colors for Each Section (Customize as Needed)
+## -------------------------------------------------
+```{r}
+# Define lookup vectors for colors.
+survival_colors <- c("OS" = "#d62728", "DSS" = "#9467bd", "RFS" = "#8c564b", "MFS" = "#e377c2")
+fdr_colors      <- c("OS" = "#ff9896", "DSS" = "#c5b0d5", "RFS" = "#c49c94", "MFS" = "#f7b6d2")
+not_fdr_colors  <- c("OS" = "indianred", "DSS" = "purple", "RFS" = "lightsalmon3", "MFS" = "hotpink")
+fdr_top10_colors <- c("OS" = "#ffbb78", "DSS" = "#e7bae2", "RFS" = "#f0a4a4", "MFS" = "#fbc2d4")
+fdr_not_top10_colors <- survival_colors
+
+df_hier <- df_hier %>%
+  mutate(color = case_when(
+    id == "All Common Pathways" ~ "#1f77b4",         # Blue for root
+    id == "Predict Survival" ~ "#ff7f0e",              # Orange for Predict Survival
+    id == "Not Predict Survival" ~ "#2ca02c",          # Green for Not Predict Survival
+    id %in% c("OS", "DSS", "RFS", "MFS") ~ survival_colors[id],
+    grepl("_FDR_Top10$", id) ~ fdr_top10_colors[sub("_FDR_Top10$", "", id)],
+    grepl("_FDR_Not_Top10$", id) ~ fdr_not_top10_colors[sub("_FDR_Not_Top10$", "", id)],
+    grepl("_FDR$", id) ~ fdr_colors[sub("_FDR$", "", id)],
+    grepl("_Not_FDR$", id) ~ not_fdr_colors[sub("_Not_FDR$", "", id)],
+    TRUE ~ "#7f7f7f"  # Fallback gray
+  ))
+
+df_hier <- df_hier %>% filter(!grepl("_FDR_Not_Top10$", id))   #To remove the one written "not TOP10 from final fig
+
+cat("Hierarchical Data Frame with Colors:\n")
+print(df_hier)
+
+```
+## -------------------------------------------------
+## 9. Build Legend Annotation with HTML for Matching Font Colors
+## -------------------------------------------------
+```{r}
+legend_items <- c(
+  "<b>Legend</b>",
+  "<span style='color:#1f77b4;'>All Common Pathways</span>",
+  "<span style='color:#ff7f0e;'>Predict Survival</span>",
+  "<span style='color:#2ca02c;'>Not Predict Survival</span>",
+  "<span style='color:#d62728;'>OS</span>",
+  "<span style='color:#9467bd;'>DSS</span>",
+  "<span style='color:#8c564b;'>RFS</span>",
+  "<span style='color:#e377c2;'>MFS</span>",
+  "<span style='color:#bcbd22;'>FDR < 0.01</span>",
+  "<span style='color:#17becf;'>Not FDR < 0.01</span>",
+  "<span style='color:#ff9896;'>FDR Among Top10</span>",
+  "<span style='color:#c9302c;'>FDR Not Among Top10</span>"
+)
+legend_text <- paste(legend_items, collapse = "<br>")
+
+```
+
+## -------------------------------------------------
+## 10. Create the Interactive Sunburst Chart with Plotly
+## -------------------------------------------------
+```{r}
+fig <- plot_ly(
+  df_hier,
+  ids = ~id,
+  labels = ~label,
+  parents = ~parent,
+  values = ~value,
+  type = 'sunburst',
+  branchvalues = 'total',
+  marker = list(colors = df_hier$color)
+) %>%
+  layout(
+    title = "Metabolic Pathways Predicting Survival for ER Positive Status")
+
+fig  # Display the interactive sunburst chart.
+```
+
+
+```{r}
+save(list = ls(),file = paste0("List-ERpos-Piechart_",Sys.Date(),".RData"))
+save.image(paste0("Image-ERpos-piechart_",Sys.Date(),".RData"))
+```
+
+
+```{r}
 sessionInfo()
 ```
+
