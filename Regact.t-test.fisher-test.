@@ -1,0 +1,72 @@
+library(pheatmap)
+library(stats)
+library(grid)
+
+# Example input for Discovery-------------------------
+gene_matrix <- as.matrix(read.delim("E:/2.ER/7.NCA.ER.Final/1.ALL/Disc.all.final/Discovery.RegulonActivity.ALL.txt",
+                                    header = TRUE, row.names = 1, check.names = FALSE))
+gene_list <- read.delim("E:\\2.ER\\7.NCA.ER.Final\\2.MP.TF\\Disc.MP.288tf\\Disc.294TF_RegulatoryElements_2025-02-20.txt",
+                        header = TRUE, check.names = FALSE)
+
+# Example input for Validation-------------------------
+gene_matrix <- as.matrix(read.delim("E:/2.ER/7.NCA.ER.Final/1.ALL/Valid.all.Final/Valid.Regact.ALL.txt",
+                                    header = TRUE, row.names = 1, check.names = FALSE))
+gene_list <- read.delim("E:\\2.ER\\7.NCA.ER.Final\\2.MP.TF\\Valid.MP.314tf/Valid.320TF_2025-02-20.txt",
+                        header = TRUE, check.names = FALSE)
+gene_list <- gene_list$x
+
+# Assuming last row of gene_matrix or separate vector has ER status
+ER.status <- as.factor(gene_matrix["ER status", ])
+expr_matrix <- gene_matrix[!rownames(gene_matrix) %in% "ER status", ]
+
+# Convert to numeric
+expr_matrix <- apply(expr_matrix, 2, as.numeric)
+rownames(expr_matrix) <- rownames(gene_matrix)[!rownames(gene_matrix) %in% "ER status"]
+
+# Perform t-test for each gene
+pvals <- apply(expr_matrix, 1, function(x) {
+  t.test(x[ER.status == "Positive"], x[ER.status == "Negative"])$p.value
+})
+
+# FDR correction
+fdr <- p.adjust(pvals, method = "fdr")
+
+# Significant genes
+sig_genes <- names(fdr[fdr < 0.01])
+
+# Find common genes
+common_genes <- intersect(sig_genes, gene_list)
+
+# Save common genes
+writeLines(common_genes, "common_genes_Valid.txt")
+
+# Create a row annotation for the heatmap
+# (We use the set of significant genes that are in the heatmap)
+row_annotation <- data.frame(Highlight = ifelse(rownames(expr_matrix[sig_genes, ]) %in% common_genes,
+                                                "Common", "NotCommon"))
+rownames(row_annotation) <- rownames(expr_matrix[sig_genes, ])
+
+# Define the annotation colors (yellow for common, white for not common)
+ann_colors <- list(Highlight = c(Common = "yellow", NotCommon = "white"))
+
+# Open PDF device to save the heatmap.
+pdf(paste0("Valid.ALL_", Sys.Date(), ".pdf"), width = 10, height = 10)
+
+pheatmap(expr_matrix[sig_genes, ],
+         main = "Validation Set (n=992 samples)",
+         cluster_cols = FALSE,          # preserve the manually set order
+         clustering_method = "ward.D2",   # cluster rows (regulons) if desired
+         clustering_distance_rows = "correlation",
+         show_colnames = FALSE,
+         show_rownames = FALSE,
+         annotation_col = data.frame(ER = ER.status),
+         annotation_row = row_annotation,  # add our row annotation
+         annotation_colors = c(list(ER = c(Positive = "steelblue", Negative = "tomato")), ann_colors),
+         border_color = NA,               # remove cell borders (no black lines)
+         fontsize_row = 3
+)
+
+# Optionally add a text label for "Regulons"
+grid.text("Regulons", x = 0.85, y = 0.6, rot = 270)
+dev.off()
+save(list = ls(),file = paste0("Valid.All_",Sys.Date(),".RData"))
