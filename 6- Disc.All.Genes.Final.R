@@ -1,5 +1,5 @@
-#R File from 'C:\\Users\\mohdb\\OneDrive - Towheed International School\\Documents\\NCA.ER\\NCA.METABRIC/METABRIC.NCA.MP.TF.EPSNA.R'
-#The line above is not mentioned in the github
+
+
 #getwd()  #[1] "C:/NCA.ER/NCA.METABRIC/Disc.all.final"
 #---Load libraries-----------------
 library(biomaRt)
