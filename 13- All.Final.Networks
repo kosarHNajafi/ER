@@ -1,0 +1,447 @@
+# -----------------------------
+# 1) Load Required Libraries
+# -----------------------------
+# Load igraph for network analysis and RedeR for interactive visualization
+library(igraph)
+library(RedeR)
+
+# -----------------------------
+# 2) Load Data
+# -----------------------------
+# Load the Discovery regulon data (only Discovery dataset is used)
+load("C:/NCA.ER/NCA.METABRIC/Final/2.MP.TF/Disc.MP.288tf/Disc.288.regulon.NA_2025-02-20.RData")
+Disc.Regulon.NA <- regulon.NA
+rm(regulon.NA)
+
+# Load pathway data to extract metabolic genes
+pathway_data <- read.delim("C:\\NCA.ER\\NCA.METABRIC\\NCA.Disc.All.Genes\\Disc.Counts\\Pathway_Counts_PathwaySheet.txt", 
+                           header = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
+pathway_genes <- unique(pathway_data$Gene)
+
+# -----------------------------
+# 3) Define the 5 Main TFs
+# -----------------------------
+# Main regulators to focus on
+tfs <- c("GATA3", "ESR1", "YBX1", "CBX2", "BCL11A")
+
+# -----------------------------
+# 4) Build the Edge List with Filtering
+# -----------------------------
+# Create an edge list where each edge connects one of the 5 main TFs to a target.
+# We only include edges if:
+#   (a) The target is present in the Discovery dataset (reproducible),
+#   (b) The target is a metabolic gene (present in pathway_genes),
+#   (c) The target is NOT a transcription factor.
+edges <- data.frame(
+  TF        = character(),
+  Target    = character(),
+  edgeColor = character(),
+  edgeStyle = character(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each main TF
+for (tf in tfs) {
+  # Get targets for this TF in the Discovery dataset
+  disc_targets  <- if (tf %in% names(Disc.Regulon.NA)) names(Disc.Regulon.NA[[tf]]) else character(0)
+  
+  # Loop over each potential target
+  for (target in disc_targets) {
+    # Skip targets that are not metabolic genes or are TFs themselves
+    if (!(target %in% pathway_genes)) next
+    if (target %in% tfs) next
+    
+    # Set edge style for reproducible edges
+    eStyle <- "solid"
+    
+    # Retrieve correlation values for this target
+    corr_disc_vals <- as.numeric(Disc.Regulon.NA[[tf]][target])
+    
+    # Set edge color based on correlation values (positive or negative)
+    if (all(corr_disc_vals > 0, na.rm = TRUE)) {
+      eColor <- "lightblue3"  # Blue for positive correlations
+    } else if (all(corr_disc_vals < 0, na.rm = TRUE)) {
+      eColor <- "lightpink3"  # Red for negative correlations
+    } else {
+      eColor <- "grey39"      # Grey for ambiguous correlations
+    }
+    
+    # Add this edge to the edge list
+    edges <- rbind(
+      edges,
+      data.frame(
+        TF = tf,
+        Target = target,
+        edgeColor = eColor,
+        edgeStyle = eStyle,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+}
+
+# -----------------------------
+# 5) Build the igraph Object
+# -----------------------------
+# Create an undirected graph from the edge list
+g <- graph_from_data_frame(edges, directed = FALSE)
+
+# -----------------------------
+# 6) Define Node Shapes & Colors
+# -----------------------------
+# Set default attributes for all nodes (circles, grey)
+V(g)$color <- "grey"
+V(g)$shape <- "circle"
+
+# Mark main TF nodes as squares
+tf_idx <- V(g)$name %in% tfs
+V(g)$shape[tf_idx] <- "square"
+
+# Assign specific colors to main TF nodes
+V(g)$color[V(g)$name %in% c("ESR1", "GATA3")] <- "steelblue1"
+V(g)$color[V(g)$name %in% c("YBX1", "CBX2", "BCL11A")] <- "maroon"
+
+# For target nodes (non-TF nodes), set them as purple
+non_tf_idx <- !(V(g)$name %in% tfs)
+V(g)$color[non_tf_idx] <- "purple"
+
+# -----------------------------
+# 7) Plot a Quick Preview in Base R
+# -----------------------------
+# Assign edge attributes (color and line type)
+E(g)$color <- edges$edgeColor
+E(g)$lty <- as.character(edges$edgeStyle)
+
+# Compute layout for the graph
+layout_fr <- layout_with_fr(g)
+
+# Plot the graph using base R plotting
+plot(
+  g,
+  layout = layout_fr,
+  vertex.label = V(g)$name,
+  vertex.label.cex = 0.7,
+  vertex.label.color = "grey39",
+  edge.arrow.size = 0.4,
+  main = "Master Regulator Network: 5 Main TFs and Common Metabolic Targets"
+)
+
+# -----------------------------
+# 8) Prepare Attributes for RedeR Visualization
+# -----------------------------
+# RedeR requires node shapes as "RECTANGLE" for squares and "ELLIPSE" for circles
+nodeShapeMap <- ifelse(V(g)$shape == "square", "RECTANGLE", "ELLIPSE")
+V(g)$nodeShape <- nodeShapeMap
+
+# Assign node colors and sizes (larger for TF nodes)
+V(g)$nodeColor <- V(g)$color
+V(g)$nodeSize <- ifelse(V(g)$name %in% tfs, 40, 25)
+
+# Prepare edge attributes for RedeR
+E(g)$edgeColor <- E(g)$color
+edgeStyleMap <- ifelse(E(g)$lty == "solid", "SOLID", "DASHED")
+E(g)$edgeStyle <- edgeStyleMap
+
+# Directly assign RedeR edge attributes
+g <- set_edge_attr(g, "edgeLineColor", value = E(g)$edgeColor)
+g <- set_edge_attr(g, "edgeLineType", value = E(g)$edgeStyle)
+
+# -----------------------------
+# 9) RedeR Visualization
+# -----------------------------
+# Initialize RedeR and add the graph
+rdp <- RedPort()
+calld(rdp)  # Initialize RedeR
+addGraph(rdp, g, layout = layout_fr)
+
+# -----------------------------
+# 10) Add Legends to the RedeR Plot
+# -----------------------------
+# Legend for node colors
+addLegendToRedeR(
+  rdp,
+  type = "nodecolor",
+  position = "bottomright",
+  orientation = "vertical",
+  font.size = 10,
+  title = " ",
+  stretch = 0,
+  x = c(
+    "TF (ER positive)" = "steelblue1",
+    "TF (ER negative)" = "maroon",
+    "Metabolic target gene" = "purple"
+  )
+)
+
+# Legend for node shapes
+addLegendToRedeR(
+  rdp,
+  type = "nodeshape",
+  position = "bottomleft",
+  orientation = "horizontal",
+  font.size = 10,
+  title = " ",
+  stretch = 0,
+  iconDim = 30,
+  x = c("TF" = "RECTANGLE", "Target" = "ELLIPSE")
+)
+
+# Legend for edge colors
+addLegendToRedeR(
+  rdp,
+  type = "edgecolor",
+  position = "bottomright",
+  orientation = "vertical",
+  font.size = 10,
+  title = " ",
+  stretch = 0,
+  x = c(
+    "Positive Correlation" = "lightblue3",
+    "Negative Correlation" = "lightpink3"
+  )
+)
+
+# -----------------------------
+# 11) Save RedeR Session if Needed
+# -----------------------------
+# Save the RedeR session and the complete R environment
+save(rdp, file = paste0("Disc.network", Sys.Date(), ".rda"))
+save(list = ls(all = TRUE), file = paste0("Disc.network", Sys.Date(), ".RData"))
+
+
+###############################################################
+#For common targets
+###############################################################
+# -----------------------------
+# 1) Load Required Libraries
+# -----------------------------
+# Load igraph for network analysis, RedeR for interactive visualization,
+# and RTN for regulatory network analysis.
+library(igraph)
+library(RedeR)
+
+# -----------------------------
+# 2) Load Data
+# -----------------------------
+# Load the two regulatory datasets from distinct analyses.
+load("C:/NCA.ER/NCA.METABRIC/Final/2.MP.TF/Disc.MP.288tf/Disc.288.regulon.NA_2025-02-20.RData")
+Disc.Regulon.NA <- regulon.NA
+rm(regulon.NA)
+
+load("C:/NCA.ER/NCA.METABRIC/Final/2.MP.TF/Valid.MP.314tf/Valid.314.regulon.NA_2025-02-20.RData")
+Valid.Regulon.NA <- regulon.NA
+rm(regulon.NA)
+
+# Load pathway data to extract metabolic genes.
+pathway_data <- read.delim("C:\\NCA.ER\\NCA.METABRIC\\NCA.Disc.All.Genes\\Disc.Counts\\Pathway_Counts_PathwaySheet.txt", 
+                           header = TRUE, check.names = FALSE, stringsAsFactors = FALSE)
+# Create a unique list of metabolic genes.
+pathway_genes <- unique(pathway_data$Gene)
+
+# -----------------------------
+# 3) Define the 5 Main TFs and Reference Data
+# -----------------------------
+# The main regulators we are focusing on.
+tfs <- c("GATA3", "ESR1", "YBX1", "CBX2", "BCL11A")
+
+# -----------------------------
+# 4) Build the Edge List with Filtering
+# -----------------------------
+# We will build an edge list where each edge connects one of the 5 main TFs to a target.
+# We only include edges if:
+#   (a) The target appears in both datasets (i.e., is reproducible/common),
+#   (b) The target is a metabolic gene (present in pathway_genes),
+#   (c) The target is NOT a transcription factor (i.e. not in the broader TF reference).
+# The edge attributes (color and style) will indicate the sign of the correlation.
+edges <- data.frame(
+  TF        = character(),
+  Target    = character(),
+  edgeColor = character(),
+  edgeStyle = character(),
+  stringsAsFactors = FALSE
+)
+
+# Loop over each main TF.
+for (tf in tfs) {
+  # Retrieve targets from each dataset if available.
+  disc_targets  <- if (tf %in% names(Disc.Regulon.NA)) names(Disc.Regulon.NA[[tf]]) else character(0)
+  valid_targets <- if (tf %in% names(Valid.Regulon.NA)) names(Valid.Regulon.NA[[tf]]) else character(0)
+  
+  # Consider the union of targets from both datasets.
+  all_targets <- union(disc_targets, valid_targets)
+  
+  # Loop over each potential target.
+  for (target in all_targets) {
+    # Determine if the target is reproducible (present in both datasets).
+    is_common <- (target %in% disc_targets) && (target %in% valid_targets)
+    if (!is_common) next  # Skip if not common.
+    
+    # Filter: Keep only metabolic genes.
+    if (!(target %in% pathway_genes)) next
+    
+    # Filter: Remove target genes that are transcription factors.
+    # This excludes any target that appears in the TF reference (even if not in our main list).
+    if (target %in% tfs) next
+    
+    # For reproducible edges, we set edge style to "solid".
+    eStyle <- "solid"
+    
+    # Retrieve all correlation values for this target from both datasets.
+    corr_disc_vals  <- as.numeric(Disc.Regulon.NA[[tf]][target])
+    corr_valid_vals <- as.numeric(Valid.Regulon.NA[[tf]][target])
+    
+    # Set edge color based on the sign of correlations in both datasets.
+    if (all(corr_disc_vals > 0, na.rm = TRUE) && all(corr_valid_vals > 0, na.rm = TRUE)) {
+      eColor <- "lightblue3"  # Blue for positive correlations.
+    } else if (all(corr_disc_vals < 0, na.rm = TRUE) && all(corr_valid_vals < 0, na.rm = TRUE)) {
+      eColor <- "lightpink3"  # Red for negative correlations.
+    } else {
+      eColor <- "grey39"      # Grey for mixed or ambiguous correlations.
+    }
+    
+    # Add this edge to the edge list.
+    edges <- rbind(
+      edges,
+      data.frame(
+        TF = tf,
+        Target = target,
+        edgeColor = eColor,
+        edgeStyle = eStyle,
+        stringsAsFactors = FALSE
+      )
+    )
+  }
+}
+
+# -----------------------------
+# 5) Build the igraph Object
+# -----------------------------
+# Create an undirected graph from the edge list.
+g <- graph_from_data_frame(edges, directed = FALSE)
+
+# -----------------------------
+# 6) Define Node Shapes & Colors
+# -----------------------------
+# Set default attributes for all nodes.
+# By default, all nodes will be set as circles and colored grey.
+V(g)$color <- "grey"
+V(g)$shape <- "circle"
+
+# Mark main TF nodes: set these nodes to squares.
+# Only the 5 main TFs should be kept as regulators.
+tf_idx <- V(g)$name %in% tfs
+V(g)$shape[tf_idx] <- "square"
+
+# For color coding, assign specific colors to main TF nodes.
+# For example, ESR1 and GATA3 are ER positive (steelblue1) and the rest are ER negative (maroon).
+V(g)$color[V(g)$name %in% c("ESR1", "GATA3")] <- "steelblue1"
+V(g)$color[V(g)$name %in% c("YBX1", "CBX2", "BCL11A")] <- "maroon"
+
+# For target nodes (non-TF nodes), since we have already filtered to include only common-metabolic targets,
+# assign them a distinct color (purple).
+non_tf_idx <- !(V(g)$name %in% tfs)
+V(g)$color[non_tf_idx] <- "purple"
+
+# -----------------------------
+# 7) Plot a Quick Preview in Base R
+# -----------------------------
+# Assign the edge attributes (color and line type) for plotting.
+E(g)$color <- edges$edgeColor
+E(g)$lty <- as.character(edges$edgeStyle)
+
+# Compute a layout for the graph using the Fruchterman-Reingold algorithm.
+layout_fr <- layout_with_fr(g)
+
+# Plot the graph using base R plotting.
+plot(
+  g,
+  layout = layout_fr,
+  vertex.label = V(g)$name,
+  vertex.label.cex = 0.7,
+  vertex.label.color = "grey39",
+  edge.arrow.size = 0.4,
+  main = "Master Regulator Network: 5 Main TFs and Common-Metabolic Targets"
+)
+
+# -----------------------------
+# 8) Prepare Attributes for RedeR Visualization
+# -----------------------------
+# RedeR requires node shapes to be defined as "RECTANGLE" for squares and "ELLIPSE" for circles.
+nodeShapeMap <- ifelse(V(g)$shape == "square", "RECTANGLE", "ELLIPSE")
+V(g)$nodeShape <- nodeShapeMap
+
+# Copy the node colors and assign node sizes (larger for TF nodes).
+V(g)$nodeColor <- V(g)$color
+V(g)$nodeSize <- ifelse(V(g)$name %in% tfs, 40, 25)
+
+# Prepare edge attributes for RedeR.
+E(g)$edgeColor <- E(g)$color
+edgeStyleMap <- ifelse(E(g)$lty == "solid", "SOLID", 
+                       ifelse(E(g)$lty == "dashed", "DASHED", "LONG_DASH"))
+E(g)$edgeStyle <- edgeStyleMap
+
+# Directly assign RedeR edge attributes to avoid unexpected mapping issues.
+g <- set_edge_attr(g, "edgeLineColor", value = E(g)$edgeColor)
+g <- set_edge_attr(g, "edgeLineType", value = E(g)$edgeStyle)
+
+# -----------------------------
+# 9) RedeR Visualization
+# -----------------------------
+# Initialize RedeR and add the graph.
+rdp <- RedPort()
+calld(rdp)  # Initialize RedeR port
+addGraph(rdp, g, layout = layout_fr)
+
+# -----------------------------
+# 10) Add Legends to the RedeR Plot
+# -----------------------------
+# Legend for node colors: main TF nodes (ER positive and negative) and common metabolic targets.
+addLegendToRedeR(
+  rdp,
+  type = "nodecolor",
+  position = "bottomright",
+  orientation = "vertical",
+  font.size = 10,
+  title = " ",
+  stretch = 0,
+  x = c(
+    "TF (ER positive)" = "steelblue1",
+    "TF (ER negative)" = "maroon",
+    "Common metabolic target gene" = "purple"
+  )
+)
+
+# Legend for node shapes: only main TF nodes (squares) and target nodes (circles).
+addLegendToRedeR(
+  rdp,
+  type = "nodeshape",
+  position = "bottomleft",
+  orientation = "horizontal",
+  font.size = 10,
+  title = " ",
+  stretch = 0,
+  iconDim     = 30,
+  x = c("TF" = "RECTANGLE", "Target" = "ELLIPSE")
+)
+
+# Legend for edge colors: based on the sign of correlation.
+addLegendToRedeR(
+  rdp,
+  type = "edgecolor",
+  position = "bottomright",
+  orientation = "vertical",
+  font.size = 10,
+  title = " ",
+  stretch = 0,
+  x = c(
+    "Positive Correlation" = "lightblue3",
+    "Negative Correlation" = "lightpink3"
+  )
+)
+
+# -----------------------------
+# 11) Save RedeR Session if Needed
+# -----------------------------
+# Save the RedeR session and the complete R environment for future use.
+save(rdp, file = paste0("9.Only Common MP.network", Sys.Date(), ".rda"))
+save(list = ls(all = TRUE), file = paste0("9.Only Common MP.network", Sys.Date(), ".RData"))
