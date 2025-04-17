@@ -6,7 +6,7 @@ library(ggplot2)
 library(gridExtra)
 
 # Set a random seed for reproducibility (e.g., for jitter positions)
-#set.seed(123456)
+#set.seed(163456)
 
 # ---------------------------
 # 2. Set Working Directory and Read Data
@@ -64,7 +64,7 @@ results_df <- data.frame(
 # 6. Open PDF Device for Plot Output
 # ---------------------------
 # Increase the PDF width to accommodate three plots side by side.
-pdf(paste0("Gene_Boxplots_", Sys.Date(), ".pdf"), width = 18, height = 6)
+pdf(paste0("Gene_Boxplots_", Sys.Date(), ".pdf"), width = 20, height = 6)
 
 # ---------------------------
 # 7. Loop Through Each Gene to Create Plots
@@ -165,12 +165,12 @@ for(gene in gene_cols) {
   # ---------------------------
   # f) Create Boxplots for Each Dataset (with Jitter)
   # ---------------------------
-  
   ## Discovery Plot (with jitter points)
   p_disc <- ggplot(disc, aes(x = `ER.status`, y = .data[[gene]], fill = `ER.status`)) +
+    #By default, geom_boxplot() draws the median as the horizontal line inside each box.
     geom_boxplot(outlier.shape = NA, alpha = 0.7) +
     #geom_jitter(width = 0.2, shape = 21, color = "black") +  # Add individual data points
-    labs(title = paste("Discovery_" ,gene, "Expression")) +
+    labs(title = "Discovery" ,y = paste(gene, "Expression")) +
     scale_fill_manual(values = custom_colors, limits = c("Positive", "Negative")) +
     coord_cartesian(clip = "off") +
     geom_text(x = 1.5, y = star_pos_disc, label = disc_label, size = 5, fontface = "plain") +
@@ -179,21 +179,22 @@ for(gene in gene_cols) {
     geom_segment(aes(x = 2, xend = 2, y = bar_pos_disc, yend = bar_pos_disc - 0.005 * range_disc), linewidth = 0.6) +
     theme_minimal() +
     theme(axis.title.x = element_blank(),
-          axis.title.y = element_blank(),
-          axis.text.x = element_text(size = 18),   # Change x axis labels font (e.g., Arial, bold)
-          axis.text.y = element_text(size = 18),   # Change y axis tick label font size
-          legend.title = element_text(size = 12),
-          legend.text = element_text(size = 12),
+          axis.title.y = element_text(size = 20),  # y-axis label size
+          axis.text.x = element_text(size = 20),   # Change x axis labels font (e.g., Arial, bold)
+          axis.text.y = element_text(size = 20),   # Change y axis tick label font size
+          legend.title = element_text(size = 16),
+          legend.text = element_text(size = 16),
           legend.position = "right",
           panel.grid = element_blank(),      # Remove gridlines
-          axis.line = element_line(linewidth = 0.6, color = "black")  # Keep axis lines
+          axis.line = element_line(linewidth = 0.6, color = "black"),  # Keep axis lines
+          plot.title = element_text(size = 20,hjust = 0.5)  # title size
     )
   
   ## Validation Plot (with jitter points)
   p_valid <- ggplot(valid, aes(x = `ER.status`, y = .data[[gene]], fill = `ER.status`)) +
     geom_boxplot(outlier.shape = NA, alpha = 0.7) +
     #geom_jitter(width = 0.2, shape = 21, color = "black") +  # Add individual data points
-    labs(title = paste("Validation_",gene, "Expression")) +
+    labs(title = "Validation",y = paste(gene, "Expression")) +
     scale_fill_manual(values = custom_colors, limits = c("Positive", "Negative")) +
     coord_cartesian(clip = "off") +
     geom_text(x = 1.5, y = star_pos_valid, label = valid_label, size = 5, fontface = "plain") +
@@ -202,20 +203,22 @@ for(gene in gene_cols) {
     geom_segment(aes(x = 2, xend = 2, y = bar_pos_valid, yend = bar_pos_valid - 0.005 * range_valid), linewidth = 0.6) +
     theme_minimal() +
     theme(axis.title.x = element_blank(),
-          axis.title.y = element_blank(),
-          axis.text.x = element_text(size = 18),   # Change x axis labels font (e.g., Arial, bold)
-          axis.text.y = element_text(size = 18),   # Change y axis tick label font size
-          legend.title = element_text(size = 12),
-          legend.text = element_text(size = 12),
+          axis.title.y = element_text(size = 20),  # y-axis label size
+          axis.text.x = element_text(size = 20),   # Change x axis labels font (e.g., Arial, bold)
+          axis.text.y = element_text(size = 20),   # Change y axis tick label font size
+          legend.title = element_text(size = 16),
+          legend.text = element_text(size = 16),
           legend.position = "right",
           panel.grid = element_blank(),      # Remove gridlines
-          axis.line = element_line(linewidth = 0.6, color = "black") ) # Keep axis lines
+          axis.line = element_line(linewidth = 0.6, color = "black"),  # Keep axis lines
+          plot.title = element_text(size = 20, hjust = 0.5)  # title size
+    )
   
   ## METABRIC Plot (with jitter points)
   p_combined <- ggplot(combined_data, aes(x = ER_status, y = Expression, fill = ER_status)) +
     geom_boxplot(outlier.shape = NA, alpha = 0.7) +
     #geom_jitter(width = 0.2, shape = 21, color = "black") +  # Add individual data points
-    labs(title = paste(gene, "Expression")) +
+    labs(title = "Combined(METABRIC)", y =paste(gene, "Expression")) +
     scale_fill_manual(values = custom_colors, limits = c("Positive", "Negative")) +
     coord_cartesian(clip = "off") +
     geom_text(x = 1.5, y = star_pos_combined, label = combined_label, size = 5, fontface = "plain") +
@@ -224,15 +227,16 @@ for(gene in gene_cols) {
     geom_segment(aes(x = 2, xend = 2, y = bar_pos_combined, yend = bar_pos_combined - 0.005 * range_combined), linewidth = 0.6) +
     theme_minimal() +
     theme(axis.title.x = element_blank(),
-          axis.title.y = element_blank(),
-          axis.text.x = element_text(size = 18),   # Change x axis labels font (e.g., Arial, bold)
-          axis.text.y = element_text(size = 18),   # Change y axis tick label font size
-          legend.title = element_text(size = 12),
-          legend.text = element_text(size = 12),
+          axis.title.y = element_text(size = 20),  # y-axis label size
+          axis.text.x = element_text(size = 20),   # Change x axis labels font (e.g., Arial, bold)
+          axis.text.y = element_text(size = 20),   # Change y axis tick label font size
+          legend.title = element_text(size = 16),
+          legend.text = element_text(size = 16),
           legend.position = "right",
           panel.grid = element_blank(),      # Remove gridlines
-          axis.line = element_line(linewidth = 0.6, color = "black")  # Keep axis lines
-    )
+          axis.line = element_line(linewidth = 0.6, color = "black"),  # Keep axis lines
+          plot.title = element_text(size = 20, hjust = 0.5)  # title size
+          )
   # ---------------------------
   # g) Arrange the Three Plots Side by Side on One Page
   # ---------------------------
@@ -240,7 +244,7 @@ for(gene in gene_cols) {
 }
 
 # ---------------------------
-# 8. Close PDF Device and Save Results
+# 8. Close the PDF Device and Save Results
 # ---------------------------
 # Close the PDF device so that the file is written.
 dev.off()
