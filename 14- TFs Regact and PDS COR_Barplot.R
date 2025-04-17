@@ -5,7 +5,8 @@ library(dplyr)
 library(ggplot2)
 library(patchwork)  # for arranging multiple plots
 library(ggtext)     # to allow HTML formatting in legend and axis text
-setwd("E:/2.ER/7.NCA.ER.Final/4.TF gene expression and PDS/3.PDS.Cor.Barplot/")
+library(grid)       # for grid.text
+setwd("file.path")
 ########################################
 # 1. Define helper function to pick correlation
 ########################################
@@ -123,20 +124,20 @@ side_data$TF     <- factor(side_data$TF, levels = custom_tf_order)
 ########################################
 # 7. Define TF colors and HTML legend labels
 ########################################
-tf_colors <- c("GATA3"  = "#230066",
-               "ESR1"   = "deepskyblue3",
-               "BCL11A" = "pink1",
-               "CBX2"   = "red3",
-               "YBX1"   = "violetred4" )
+tf_colors <- c("GATA3"  = "#87D487",
+               "ESR1"   = "#E07080",
+               "BCL11A" = "#6EDFF6",
+               "CBX2"   = "#5FB3F3",
+               "YBX1"   = "#3E3E3E" )
 
 
 # HTML-colored legend labels for TFs.
 tf_labels_legend <- c(
-  "GATA3"  = "<span style='color:#230066'>GATA3</span>",
-  "ESR1"   = "<span style='color:deepskyblue3'>ESR1</span>",
-  "BCL11A" = "<span style='color:pink1'>BCL11A</span>",
-  "CBX2"   = "<span style='color:red3'>CBX2</span>",
-  "YBX1"   = "<span style='color:violetred4'>YBX1</span>"
+  "GATA3"  = "<span style='color:#87D487'>GATA3</span>",
+  "ESR1"   = "<span style='color:#E07080'>ESR1</span>",
+  "BCL11A" = "<span style='color:#6EDFF6'>BCL11A</span>",
+  "CBX2"   = "<span style='color:#5FB3F3'>CBX2</span>",
+  "YBX1"   = "<span style='color:#3E3E3E'>YBX1</span>"
 )
 
 ########################################
@@ -146,13 +147,23 @@ tf_labels_legend <- c(
 all_data <- all_data %>%
   mutate(Sign = ifelse(Cor_final >= 0, "Positive", "Negative"))
 
+# Open manual graphics device
+pdf(paste0("TFs Regact and PDS COR_", Sys.Date(), ".pdf"), width = 37, height = 17)
+
 # Now create the main plot again with colored y-axis labels
 myplot <- ggplot(all_data, aes(x = Pathway, y = TF)) +
-  geom_point(aes(fill = TF, shape = Sign, size = abs(Cor_final)), color = "black") +
-  scale_shape_manual(values = c("Positive" = 24, "Negative" = 25)) +
-  # Set the fill color to black for both Positive and Negative
+  geom_point(aes(fill = TF, shape = Sign, size = abs(Cor_final)), color = "#3E3E3E") +
+  scale_shape_manual(values = c("Positive" = 24, "Negative" = 25),
+                     # Set the fill color to #3E3E3E for both Positive and Negative
+                     breaks = c("Positive", "Negative")) +  # This enforces order in the legend
   scale_fill_manual(values = tf_colors, labels = tf_labels_legend, guide = "none") +
-  scale_size_area(name = "Correlation Magnitude", max_size = 10) + #, breaks = c(0.1, 1.25,0.5)
+  scale_size_area(name = "Correlation",
+                  max_size = 10,
+                  guide = guide_legend(
+                    title = "Correlation", 
+                    keyheight = unit(4, "lines"),
+                    keywidth = unit(2, "lines")
+                  )) + #, breaks = c(0.1, 1.25,0.5)
   scale_x_discrete(expand = c(0,0)) +
   theme_minimal(base_size = 20) +
   scale_y_discrete(
@@ -183,20 +194,32 @@ myplot <- ggplot(all_data, aes(x = Pathway, y = TF)) +
     aspect.ratio = 1/4  # Space between TF rows
   ) +
   coord_cartesian(clip = "off") +  # So that it does not clip the top and bottom of the plot
-  labs(size = "Correlation Magnitude", 
+  labs(size = "Correlation", 
        shape = "Correlation Direction",
-       x = "Correlation between gene expression and metabolic pathways") +
+       x = "Correlation between regulon activity and metabolic pathways deregulation score") +
   guides(
     shape = guide_legend(
       keyheight = unit(5, "lines"),    # Increase vertical space for each key
       keywidth  = unit(3, "lines"),    # Increase horizontal space for each key
       override.aes = list(size = 10)   # Increase the triangle (shape) size
+    ),
+    size = guide_legend(
+      title = "Correlation",
+      override.aes = list(shape = 24),  # Adjust size and set to triangle
+      keyheight = unit(3, "lines"),    # Increase vertical space for each key
+      order = 1
     )
-)
+  )
+
+print(myplot)
+
+# Add the text to the side (adjust x and y as needed)
+grid.text("P.value < 0.05", x = 0.935, y = 0.53, rot = 0, gp = gpar(fontsize = 28))
+
+dev.off()
 
 # Save the plot
-ggsave(paste0("TFs and PDS COR_", Sys.Date(), ".pdf"), myplot, width = 37, height = 17)
+#ggsave(paste0("TFs Regact and PDS COR_", Sys.Date(), ".pdf"), myplot, width = 37, height = 17)
 
 se <- sessionInfo()
-# Save the workspace data
-save(list = ls(), file = paste0("TFs and PDS COR_", Sys.Date(), ".RData"))
+save(list = ls(), file = paste0("TFs Regact and PDS COR_", Sys.Date(), ".RData"))
