@@ -86,10 +86,8 @@ process_survival_ER <- function(survival, er_group,
 ########################################################################
 # Load discovery and validation FDR datasets and rename the pathways column.
 discovery <- read.delim("D.FDR.txt", check.names = FALSE)
-colnames(discovery)[colnames(discovery) == "DISCOVERY; FDR<0.01; Metabolic pathways"] <- "pathways"
 
 validation <- read.delim("V.FDR.txt", check.names = FALSE)
-colnames(validation)[colnames(validation) == "VALIDATION; FDR<0.01; Metabolic pathways"] <- "pathways"
 
 # Split the FDR datasets based on MD value:
 # ERpos: MD >= 0; ERneg: MD < 0.
@@ -224,30 +222,6 @@ common_results_combined <- common_results %>%
     .groups = "drop"
   )
 
-
-########################################################################
-# Section 7: Create X-axis Label Mapping Based on Top10 Membership
-#INACTIVATE SECTION 7 IF YOU DON'T WANT FONTCOLOR IN YOUR PLOT
-########################################################################
-label_df <- common_results_combined %>%
-  group_by(Pathway) %>%
-  summarise(
-    ER_Status = if(length(unique(ER_Status)) > 1) "Common" else first(ER_Status),
-    Top10 = any(Top10_ERpos) | any(Top10_ERneg),
-    .groups = "drop"
-  )
-
-labels_map <- setNames(
-  ifelse(label_df$Pathway %in% intersect(top10_ERpos_names_discovery, top10_ERpos_names_validation),
-         paste0("<span style='color:steelblue'>", label_df$Pathway, "</span>"),
-         ifelse(label_df$Pathway %in% intersect(top10_ERneg_names_discovery, top10_ERneg_names_validation),
-                paste0("<span style='color:red'>", label_df$Pathway, "</span>"),
-                label_df$Pathway)
-  ),
-  label_df$Pathway
-)
-
-
 ########################################################################
 # Section 8: Prepare Plot Data and Create the Bubble Plot
 ########################################################################
@@ -295,16 +269,6 @@ p <- p + geom_point(data = subset(common_results_combined, !is.na(Grey_Square) &
 # Section 9: Apply the Custom X-axis Labels and Display the Plot
 ########################################################################
 p <- p + scale_x_discrete(labels = labels_map)
-
-#to remove the background grid
-#p <- p + theme(
-#  panel.grid.major = element_blank(),
-#  panel.grid.minor = element_blank(),
-#  axis.line = element_line(color = "black")
-#)
-
-# Create a custom legend for the square border.
-# Here, we use a thicker border (lwd = 3) in the custom legend.
 legend_plot <- ggdraw() + 
   draw_label("HR<1",  x = 0.94, y = 6.7, size = 10, fontface = "italic") +   #size to fit US letter pdf: x = 0.95, y = 6.2 
   draw_grob(rectGrob(gp = gpar(col = "grey", fill = NA, lwd = 3)),        
