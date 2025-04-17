@@ -221,6 +221,26 @@ common_results_combined <- common_results %>%
     Top10_ERneg = first(Pathway) %in% c(top10_ERneg_names_discovery, top10_ERneg_names_validation),
     .groups = "drop"
   )
+########################################################################
+# Section 7: Create X-axis Label Mapping Based on Top10 Membership (optional)
+########################################################################
+#label_df <- common_results_combined %>%
+#  group_by(Pathway) %>%
+#  summarise(
+#    ER_Status = if(length(unique(ER_Status)) > 1) "Common" else first(ER_Status),
+#    Top10 = any(Top10_ERpos) | any(Top10_ERneg),
+#    .groups = "drop"
+#  )
+
+#labels_map <- setNames(
+#  ifelse(label_df$Pathway %in% intersect(top10_ERpos_names_discovery, top10_ERpos_names_validation),
+#         paste0("<span style='color:steelblue'>", label_df$Pathway, "</span>"),
+#         ifelse(label_df$Pathway %in% intersect(top10_ERneg_names_discovery, top10_ERneg_names_validation),
+#                paste0("<span style='color:red'>", label_df$Pathway, "</span>"),
+#                label_df$Pathway)
+#  ),
+#  label_df$Pathway
+#)
 
 ########################################################################
 # Section 8: Prepare Plot Data and Create the Bubble Plot
