@@ -12,8 +12,8 @@ library(openxlsx)      # For reading and writing Excel files
 # Read in the Survival Data
 # ------------------------------------------------------------
 # This file contains the survival information for the patients.
-# NotD: Make sure the file path is correct.
-  survival_data <- read.delim("E:/2.ER/5.Survival Analysis/PDS_KM/ER.Status.Survival/Disc.ER.Surv.txt", 
+# Note: Ensure the file path is correct.
+ survival_data <- read.delim(choose.files(), 
                             check.names = FALSE)
 colnames(survival_data) <- gsub(" ", "_", colnames(survival_data))
 
@@ -89,12 +89,6 @@ for (endpoint in names(endpoints)) {
   surv_obj <- Surv(time = current_data[[cols$time]], event = as.numeric(current_data[[cols$event]]))
   surv_fit <- survfit(surv_obj ~ `ER_Status`, data = current_data, na.action = na.exclude)
   
-  # Calculate HR for the regular analysis using Cox regression
-  #cox_model <- coxph(surv_obj ~ `ER_Status`, data = current_data)
-  #hr_val <- summary(cox_model)$coefficients[1, "exp(coef)"]
-  #p_val <- summary(cox_model)$coefficients[1, "Pr(>|z|)"]
-  #hr_text <- paste0("HR: ", round(hr_val, 2), " (", format_p_value(p_val), ")")
-  
   # Generate the survival plot for the regular analysis
   plot_regular <- ggsurvplot(surv_fit, data = current_data, pval = TRUE,
                              pval.coord = c(0, 0.15), pval.size = 4.8,
@@ -129,11 +123,6 @@ for (endpoint in names(endpoints)) {
     theme(axis.title.y = element_blank(),         # Also ensure the title is blank
           plot.title = element_text(size = 16)
     )
-  # Annotate the plot with the HR information and add a title
-  #plot_regular$plot <- plot_regular$plot +
-   # annotate("text", x = 0, y = 0.08, label = hr_text, size = 4.8, hjust = 0) +
-   # ggtitle(paste(endpoint,"\n", "Survival by ER_Status"))
-  
   # Print the regular analysis plot to the PDF
   print(plot_regular)
   
@@ -147,12 +136,6 @@ for (endpoint in names(endpoints)) {
   # Create the survival object and fit the Kaplan–Meier curve for the 5-year analysis
   surv_obj_5yr <- Surv(time = current_data_5yr[[cols$time]], event = as.numeric(current_data_5yr[[cols$event]]))
   surv_fit_5yr <- survfit(surv_obj_5yr ~ `ER_Status`, data = current_data_5yr, na.action = na.exclude)
-  
-  # Calculate the HR for the 5-year analysis using Cox regression
- # cox_model_5yr <- coxph(surv_obj_5yr ~ `ER_Status`, data = current_data_5yr)
- # hr_val_5yr <- summary(cox_model_5yr)$coefficients[1, "exp(coef)"]
- # p_val_5yr <- summary(cox_model_5yr)$coefficients[1, "Pr(>|z|)"]
- # hr_text_5yr <- paste0("HR: ", round(hr_val_5yr, 2), " (", format_p_value(p_val_5yr), ")")
   
   # Generate the survival plot for the 5-year analysis
   plot_5yr <- ggsurvplot(surv_fit_5yr, data = current_data_5yr, pval = TRUE,
@@ -187,10 +170,7 @@ for (endpoint in names(endpoints)) {
     labs(y = NULL) +                             # Removes the y-axis label
     theme(axis.title.y = element_blank(),         # Also ensure the title is blank
           plot.title = element_text(size = 16))
-          #plot_5yr$plot <- plot_5yr$plot +
-  #  annotate("text", x = 0, y = 0.08, label = hr_text_5yr, size = 4.8, hjust = 0) +
-   # ggtitle(paste(endpoint,"\n", "5-Year Survival by ER_Status"))
-  
+          
   # Print the 5-year analysis plot to the PDF
   print(plot_5yr)
   
@@ -236,7 +216,7 @@ rm(list = ls())
 # ------------------------------------------------------------
 # This file contains the survival information for the patients.
 # NotD: Make sure the file path is correct.
-survival_data <- read.delim("E:/2.ER/5.Survival Analysis/PDS_KM/ER.Status.Survival/Valid.ER.Surv.txt", 
+survival_data <- read.delim(choose.files(), 
                             check.names = FALSE)
 colnames(survival_data) <- gsub(" ", "_", colnames(survival_data))
 
@@ -313,12 +293,6 @@ for (endpoint in names(endpoints)) {
   surv_obj <- Surv(time = current_data[[cols$time]], event = as.numeric(current_data[[cols$event]]))
   surv_fit <- survfit(surv_obj ~ `ER_Status`, data = current_data, na.action = na.exclude)
   
-  # Calculate HR for the regular analysis using Cox regression
-  #cox_model <- coxph(surv_obj ~ `ER_Status`, data = current_data)
-  #hr_val <- summary(cox_model)$coefficients[1, "exp(coef)"]
-  #p_val <- summary(cox_model)$coefficients[1, "Pr(>|z|)"]
-  #hr_text <- paste0("HR: ", round(hr_val, 2), " (", format_p_value(p_val), ")")
-  
   # Generate the survival plot for the regular analysis
   plot_regular <- ggsurvplot(surv_fit, data = current_data, pval = TRUE,
                              pval.coord = c(0, 0.15), pval.size = 4.8,
@@ -352,10 +326,6 @@ for (endpoint in names(endpoints)) {
     labs(y = NULL) +                             # Removes the y-axis label
     theme(axis.title.y = element_blank(),         # Also ensure the title is blank
           plot.title = element_text(size = 16))
-  # Annotate the plot with the HR information and add a title
-  #plot_regular$plot <- plot_regular$plot +
-  # annotate("text", x = 0, y = 0.08, label = hr_text, size = 4.8, hjust = 0) +
-  # ggtitle(paste(endpoint,"\n", "Survival by ER_Status"))
   
   # Print the regular analysis plot to the PDF
   print(plot_regular)
@@ -370,12 +340,6 @@ for (endpoint in names(endpoints)) {
   # Create the survival object and fit the Kaplan–Meier curve for the 5-year analysis
   surv_obj_5yr <- Surv(time = current_data_5yr[[cols$time]], event = as.numeric(current_data_5yr[[cols$event]]))
   surv_fit_5yr <- survfit(surv_obj_5yr ~ `ER_Status`, data = current_data_5yr, na.action = na.exclude)
-  
-  # Calculate the HR for the 5-year analysis using Cox regression
-  # cox_model_5yr <- coxph(surv_obj_5yr ~ `ER_Status`, data = current_data_5yr)
-  # hr_val_5yr <- summary(cox_model_5yr)$coefficients[1, "exp(coef)"]
-  # p_val_5yr <- summary(cox_model_5yr)$coefficients[1, "Pr(>|z|)"]
-  # hr_text_5yr <- paste0("HR: ", round(hr_val_5yr, 2), " (", format_p_value(p_val_5yr), ")")
   
   # Generate the survival plot for the 5-year analysis
   plot_5yr <- ggsurvplot(surv_fit_5yr, data = current_data_5yr, pval = TRUE,
@@ -410,9 +374,6 @@ for (endpoint in names(endpoints)) {
     labs(y = NULL) +                             # Removes the y-axis label
     theme(axis.title.y = element_blank(),         # Also ensure the title is blank
           plot.title = element_text(size = 16))
-  #plot_5yr$plot <- plot_5yr$plot +
-  #  annotate("text", x = 0, y = 0.08, label = hr_text_5yr, size = 4.8, hjust = 0) +
-  # ggtitle(paste(endpoint,"\n", "5-Year Survival by ER_Status"))
   
   # Print the 5-year analysis plot to the PDF
   print(plot_5yr)
