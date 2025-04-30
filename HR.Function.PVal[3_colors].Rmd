@@ -1,0 +1,398 @@
+---
+title: "HR.Function"
+author: "Kosar"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Load required libraries
+```{r}
+library(survival)
+library(dplyr)
+library(purrr)
+library(tibble)
+library(stats)
+library(openxlsx)
+library(ggplot2)
+library(cowplot)
+library(grid)
+```
+# Section 1: Helper function for HR
+```{r}
+analyze_pathways_survival <- function(df, pathway_cols, tag = NULL, save_results = FALSE, output_dir = ".") {
+  
+  endpoint_definitions <- list(
+    OS  = list(time = "OS(Months)",   event = "OS status"),
+    DSS = list(time = "OS(Months)",   event = "DSS"),
+    RFS = list(time = "RFS (Months)", event = "RFS"),
+    MFS = list(time = "OS(Months)",   event = "MFS")
+  )
+  
+  all_results <- list()
+  
+  for (endpoint in names(endpoint_definitions)) {
+    time_col  <- endpoint_definitions[[endpoint]]$time
+    event_col <- endpoint_definitions[[endpoint]]$event
+    
+    # Modified dataframe for 5-year truncation
+    df_mod <- df %>%
+      mutate(
+        !!time_col := ifelse(!!sym(time_col) > 60, 60, !!sym(time_col)),
+        !!event_col := ifelse(!!sym(time_col) >= 60, 0, !!sym(event_col))
+      )
+    
+    for (five_years in c(FALSE, TRUE)) {
+      current_df <- if (five_years) df_mod else df
+      
+      res <- map_dfr(pathway_cols, function(pathway_col) {
+        pathway_name <- names(df)[pathway_col]
+        
+        formula <- as.formula(paste0("Surv(`", time_col, "`, `", event_col, "`) ~ `", pathway_name, "`"))
+        
+        cox_model <- tryCatch(
+          suppressWarnings(coxph(formula, data = current_df)),
+          error = function(e) NULL
+        )
+        
+        if (!is.null(cox_model)) {
+          coef_summary <- summary(cox_model)$coefficients
+          tibble(
+            pathway = pathway_name,
+            HR = coef_summary[1, "exp(coef)"],
+            p_value = coef_summary[1, "Pr(>|z|)"]
+          )
+        } else {
+          tibble(
+            pathway = pathway_name,
+            HR = NA,
+            p_value = NA
+          )
+        }
+      })
+      
+      # Adjust p-values for FDR
+      res <- res %>%
+        mutate(FDR = p.adjust(p_value, method = "fdr"),
+               endpoint = if (five_years) paste0(endpoint, "-5year") else endpoint)
+      
+      all_results[[if (five_years) paste0(endpoint, "-5year") else endpoint]] <- res
+    }
+  }
+  
+  # Save results into one Excel file if requested
+  if (save_results) {
+    wb <- createWorkbook()
+    
+    for (endpoint_name in names(all_results)) {
+      addWorksheet(wb, sheetName = endpoint_name)
+      writeData(wb, sheet = endpoint_name, all_results[[endpoint_name]])
+    }
+    
+    file_name <- paste0(output_dir, "/", "cox_results_", if (!is.null(tag)) paste0(tag, "_"), "PVal_endpoints.xlsx")
+    saveWorkbook(wb, file = file_name, overwrite = TRUE)
+  }
+  
+  final_results <- bind_rows(all_results)
+  
+  return(final_results)
+}
+
+```
+# Section 1-2: Employ the HR function on you data
+```{r}
+disc_erpos <- read.delim("DISC.ERpos.txt", 
+                         check.names = FALSE,
+                         row.names = 1)
+disc_erpos_hr <- analyze_pathways_survival(
+  df = disc_erpos,
+  pathway_cols = 10:99,
+  tag = "DISC_ERpos",
+  save_results = TRUE,
+  output_dir = "."
+)
+
+disc.erneg <- read.delim("DISC.ERneg.txt", 
+                         check.names = FALSE,
+                         row.names = 1)
+disc_erneg_hr <- analyze_pathways_survival(
+  df = disc.erneg,
+  pathway_cols = 10:99,
+  tag = "DISC_ERneg",
+  save_results = TRUE,
+  output_dir = "."
+)
+valid.erpos <- read.delim("VALID.ERpos.txt", 
+                         check.names = FALSE,
+                         row.names = 1)
+valid_erpos_hr <- analyze_pathways_survival(
+  df = valid.erpos,
+  pathway_cols = 10:99,
+  tag = "VALID_ERpos",
+  save_results = TRUE,
+  output_dir = "."
+)
+valid.erneg <- read.delim("VALID.ERneg.txt", 
+                         check.names = FALSE,
+                         row.names = 1)
+valid_erneg_hr <- analyze_pathways_survival(
+  df = valid.erneg,
+  pathway_cols = 10:99,
+  tag = "VALID_ERneg",
+  save_results = TRUE,
+  output_dir = "."
+)
+
+```
+# Section 2: Helper function to Find common significant pathways
+```{r}
+find_common_significant_pathways <- function(disc_data, valid_data) {
+  
+  # Filter disc and valid for p_value <0.05
+  disc_sig <- disc_data %>%
+    filter(p_value <0.05)
+  
+  valid_sig <- valid_data %>%
+    filter(p_value <0.05)
+  
+  # Inner join by pathway and endpoint
+  common <- inner_join(
+    disc_sig,
+    valid_sig,
+    by = c("pathway", "endpoint"),
+    suffix = c("_disc", "_valid")
+  )
+  
+  # Keep pathways where HR is consistently >1 or consistently <1
+  common_consistent <- common %>%
+    filter(
+      (HR_disc > 1 & HR_valid > 1) |
+        (HR_disc < 1 & HR_valid < 1)
+    )
+  
+  return(common_consistent)
+}
+```
+# Section 2-1: Employ the common significant pathways function
+```{r}
+er_pos_common <- find_common_significant_pathways(disc_erpos_hr, valid_erpos_hr)
+er_neg_common <- find_common_significant_pathways(disc_erneg_hr, valid_erneg_hr)
+```
+
+# Section 3: Prepare data for plotting
+```{r}
+# Add ER status
+er_pos_common <- er_pos_common %>% mutate(ER_Status = "ER-Positive")
+er_neg_common <- er_neg_common %>% mutate(ER_Status = "ER-Negative")
+
+# Combine both datasets
+common_results_combined <- bind_rows(er_pos_common, er_neg_common)
+
+# Identify common (pathway, endpoint) pairs
+shared_pairs <- inner_join(
+  er_pos_common %>% select(pathway, endpoint) %>% distinct(),
+  er_neg_common %>% select(pathway, endpoint) %>% distinct(),
+  by = c("pathway", "endpoint")
+)
+
+# Mark shared pathway-endpoint pairs as "Common"
+common_results_combined <- common_results_combined %>%
+  mutate(ER_Status = ifelse(paste(pathway, endpoint) %in% 
+                              paste(shared_pairs$pathway, shared_pairs$endpoint),
+                            "Common", ER_Status))
+
+# Select p-value/HR
+common_results_combined <- common_results_combined %>%
+  mutate(
+    selected_p_value = pmax(p_value_disc, p_value_valid, na.rm = TRUE),
+    selected_HR = ifelse(p_value_disc >= p_value_valid, HR_disc, HR_valid),
+    selected_dataset = ifelse(p_value_disc >= p_value_valid, "Discovery", "Validation")
+  )
+
+# Save output
+write.table(common_results_combined, file = paste0("Common_Pathways_", Sys.Date(), ".txt"), 
+            sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Factor levels for pathways
+all_pathways <- sort(unique(common_results_combined$pathway))
+common_results_combined$pathway <- factor(common_results_combined$pathway, levels = all_pathways)
+
+er_colors <- c("Common" = "mediumorchid4", "ER-Positive" = "steelblue1", "ER-Negative" = "indianred3")
+
+# Bubble sizes
+common_results_combined <- common_results_combined %>%
+  mutate(SizeMetric = -log10(selected_p_value),
+         SizeMetric2 = SizeMetric * 1.5)
+
+# Grey square condition
+common_results_combined <- common_results_combined %>%
+  mutate(Grey_Square = (HR_disc < 1 & HR_valid < 1))
+
+# Endpoint order
+endpoint_order <- c("MFS-5year", "RFS-5year", "DSS-5year", "OS-5year",
+                    "MFS", "RFS", "DSS", "OS")
+common_results_combined$endpoint <- factor(common_results_combined$endpoint, levels = endpoint_order)
+
+```
+
+# ⚠️ if you ever change endpoint names, you must manually edit it
+# section 4-1: Create plots for all endpoints
+```{r}
+
+p_all <- ggplot(common_results_combined, aes(x = pathway, y = endpoint)) +
+    geom_point(aes(size = SizeMetric, color = ER_Status), shape = 16, fill = NA) +
+    scale_color_manual(values = er_colors,
+                       breaks = c("Common","ER-Positive","ER-Negative")) +
+    scale_size_continuous(name = "-log (P-value)", range = c(2, 8)) +
+    scale_x_discrete(expand = expansion(add = c(0.5, 0.7))) + 
+    labs(x = "Pathway", y = "Survival Type", color = "ER Status") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.15),
+      axis.title.x = element_text(hjust = 0.5, vjust = -3.5, size = 14),
+      axis.title.y = element_text(hjust = 0.5, vjust = 5, angle = 90, size = 14),
+      plot.margin = margin(t = 10, r = 10, b = 10, l = 30),
+      panel.border = element_rect(color = "grey", fill = NA, linewidth = 1)
+    ) +
+    guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+
+  # Add grey squares, subset from correct `data`
+  p_all <- p_all + geom_point(data = subset(common_results_combined, Grey_Square),
+                      aes(x = pathway, y = endpoint, size = SizeMetric2),
+                      shape = 22, fill = NA, color = "grey", stroke = 2,
+                      show.legend = FALSE)
+
+# Custom grey square legend
+  legend_plot_all <- ggdraw() + 
+    draw_label("HR < 1", x = 0.95, y = 6.75, size = 10, fontface = "italic") +
+    draw_grob(rectGrob(gp = gpar(col = "grey", fill = NA, lwd = 3)),
+              x = 0.913, y = 6.6, width = 0.015, height = 0.3)
+
+  # Combine plots
+  final_plot_all <- plot_grid(p_all, legend_plot_all, ncol = 1, rel_heights = c(1, 0.1))
+
+  # Show plot
+  print(final_plot_all)
+
+  # Save the plot with correct filename
+  ggsave(filename = paste0("All", "_Survival_Bubble_", Sys.Date(), ".TIFF"),
+         plot = final_plot_all, width = 14, height = 8)
+
+```
+
+# Section 4-2:  Create plots for overall survival  
+```{r}
+overall_data <- common_results_combined %>%
+  filter(!grepl("-5year$", endpoint))
+
+p_overall <- ggplot(overall_data, aes(x = pathway, y = endpoint)) +
+    geom_point(aes(size = SizeMetric, color = ER_Status), shape = 16, fill = NA) +
+    scale_color_manual(values = er_colors,
+                       breaks = c("Common","ER-Positive","ER-Negative")) +
+    scale_size_continuous(name = "-log (P-value)", range = c(2, 8)) +
+    scale_x_discrete(expand = expansion(add = c(0.5, 0.7))) + 
+    scale_y_discrete(expand = expansion(mult = c(0.2,0.2))) +
+    labs(x = "Pathway", y = "Survival Type", color = "ER Status") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.15),
+      axis.title.x = element_text(hjust = 0.5, vjust = -3.5, size = 14),
+      axis.title.y = element_text(hjust = 0.5, vjust = 5, angle = 90, size = 14),
+      plot.margin = margin(t = 30, r = 10, b = 10, l = 30),
+      panel.border = element_rect(color = "grey", fill = NA, linewidth = 1)
+    ) +
+    guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+
+  # Add grey squares, subset from correct `data`
+  p_overall <- p_overall +
+    geom_point(data = subset(overall_data, Grey_Square),
+                      aes(x = pathway, y = endpoint, size = SizeMetric2),
+                      shape = 22, fill = NA, color = "grey", stroke = 2,
+                      show.legend = FALSE)
+
+# Custom grey square legend
+  legend_plot_overall <- ggdraw() + 
+    draw_label("HR < 1", x = 0.95, y = 57, size = 10, fontface = "italic") +
+    draw_grob(rectGrob(gp = gpar(col = "grey", fill = NA, lwd = 3)),
+              x = 0.913, y = 55.5, width = 0.013, height = 2.5)
+
+  # Combine plots
+  final_plot_overall <- plot_grid(p_overall, legend_plot_overall, ncol = 1, rel_heights = c(1, 0.01))
+
+  # Show plot
+  print(final_plot_overall)
+
+  # Save the plot with correct filename
+  ggsave(filename = paste0("Just_overall", "_Survival_Bubble_", Sys.Date(), ".TIFF"),
+         plot = final_plot_overall, width = 14, height = 7)
+
+```
+
+# section 4-3 : Create 5-year survival plots
+```{r}
+five_year_data <- common_results_combined %>%
+  filter(grepl("-5year$", endpoint))
+
+p_5year <- ggplot(five_year_data, aes(x = pathway, y = endpoint)) +
+    geom_point(aes(size = SizeMetric, color = ER_Status), shape = 16, fill = NA) +
+    scale_color_manual(values = er_colors,
+                       breaks = c("Common","ER-Positive","ER-Negative")) +
+    scale_size_continuous(name = "-log (P-value)", range = c(2, 8)) +
+  #space between columns :  
+  scale_x_discrete(expand = expansion(add = c(0.5, 0.7))) + 
+  #space between rows : or expansion(add = c(2, 2))
+    scale_y_discrete(expand = expansion(mult = c(0.15,0.15))) +
+    labs(x = "Pathway", y = "Survival Type", color = "ER Status") +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(size = 12, angle = 90, hjust = 1, vjust = 0.15),
+      axis.title.x = element_text(hjust = 0.5, vjust = -3.5, size = 14),
+      axis.title.y = element_text(hjust = 0.5, vjust = 5, angle = 90, size = 14),
+      #Box size
+      plot.margin = margin(t = 25, r = 1, b = 10, l = 20),
+      panel.border = element_rect(color = "grey", fill = NA, linewidth = 1)
+    ) +
+    guides(color = guide_legend(order = 1), size = guide_legend(order = 2))
+
+  # Add grey squares, subset from correct `data`
+  p_5year <- p_5year + geom_point(data =  subset(five_year_data, Grey_Square),
+                      aes(x = pathway, y = endpoint, size = SizeMetric2),
+                      shape = 22, fill = NA, color = "grey", stroke = 2,
+                      show.legend = FALSE)
+
+# Custom grey square legend
+  legend_plot_5year <- ggdraw() + 
+    draw_label("HR < 1",  x = 0.957, y = 48.5,  size = 10, fontface = "italic") +
+    draw_grob(rectGrob(gp = gpar(col = "grey", fill = NA, lwd = 3)),
+              x = 0.923, y = 47, width = 0.0115, height = 3)
+
+  # Combine plots
+  final_plot_5year <- plot_grid(p_5year, legend_plot_5year, ncol = 1, rel_heights = c(1, 0.01))
+
+  # Show plot
+  print(final_plot_5year)
+
+  # Save the plot with correct filename
+  ggsave(filename = paste0("Just_5year", "_Survival_Bubble_", Sys.Date(), ".TIFF"),
+         plot = final_plot_5year, width = 14, height = 5)
+
+
+```
+
+
+<details>
+<summary>⚙️session info⚙️</summary>
+
+# sessionInfo
+```{r}
+sessionInfo()
+```
+
+# Save everything
+```{r}
+# Save R session
+save(list = ls(), file = paste0("Final_HR_ER_", Sys.Date(), "_PVal.RData"))
+```
+
