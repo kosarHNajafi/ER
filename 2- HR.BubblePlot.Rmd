@@ -147,7 +147,7 @@ valid_erneg_hr <- analyze_pathways_survival(
 
 ```
 # Section 2: Helper function to Find common significant pathways
-```{r}
+```{r eval=FALSE}
 find_common_significant_pathways <- function(disc_data, valid_data) {
   
   # Filter disc and valid for p_value <0.05
@@ -175,10 +175,65 @@ find_common_significant_pathways <- function(disc_data, valid_data) {
   return(common_consistent)
 }
 ```
-# Section 2-1: Employ the common significant pathways function
+
+# Alternative Section 2: 
+## Find common significant pathways + 
+## check pathways' mean difference FDR<0.01
 ```{r}
+# Read in FDR data from external D.FDR and V.FDR files
+disc_fdr <- read.delim("D.FDR.txt", check.names = FALSE)
+colnames(disc_fdr)[colnames(disc_fdr) == "DISCOVERY; FDR<0.01; Metabolic pathways"] <- "pathways"
+
+valid_fdr <- read.delim("V.FDR.txt", check.names = FALSE)
+colnames(valid_fdr)[colnames(valid_fdr) == "VALIDATION; FDR<0.01; Metabolic pathways"] <- "pathways"
+
+find_common_significant_pathways <- function(disc_data, valid_data, disc_fdr, valid_fdr) {
+  
+  # Get vectors of pathways that passed FDR filtering
+  disc_paths_fdr <- unique(disc_fdr$pathway)
+  valid_paths_fdr <- unique(valid_fdr$pathway)
+  
+  # Only keep HR entries where the pathway is significant in FDR in both sets
+  disc_data <- disc_data %>% filter(pathway %in% disc_paths_fdr)
+  valid_data <- valid_data %>% filter(pathway %in% valid_paths_fdr)
+  
+  # Then filter both HR datasets by p-value
+  disc_sig <- disc_data %>% filter(p_value < 0.05)
+  valid_sig <- valid_data %>% filter(p_value < 0.05)
+  
+  # Inner join by pathway and endpoint
+  common <- inner_join(
+    disc_sig,
+    valid_sig,
+    by = c("pathway", "endpoint"),
+    suffix = c("_disc", "_valid")
+  )
+  
+  # Keep pathways where HR is consistently >1 or <1
+  common_consistent <- common %>%
+    filter(
+      (HR_disc > 1 & HR_valid > 1) |
+      (HR_disc < 1 & HR_valid < 1)
+    )
+  
+  return(common_consistent)
+}
+
+```
+
+# Section 2-1: Employ the common significant pathways function
+```{r eval=FALSE}
 er_pos_common <- find_common_significant_pathways(disc_erpos_hr, valid_erpos_hr)
 er_neg_common <- find_common_significant_pathways(disc_erneg_hr, valid_erneg_hr)
+```
+# Alternative Section 2-1: 
+##Employ the common significant pathways function considering FDR of pathways
+```{r}
+er_pos_common <- find_common_significant_pathways(disc_erpos_hr, valid_erpos_hr,
+                                                   disc_fdr, valid_fdr)
+
+er_neg_common <- find_common_significant_pathways(disc_erneg_hr, valid_erneg_hr,
+                                                   disc_fdr, valid_fdr)
 ```
 
 # Section 3: Prepare data for plotting
